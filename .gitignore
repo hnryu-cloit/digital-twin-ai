@@ -1,0 +1,22 @@
+# Environment
+.env
+*.json.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Output
+scripts/output/
+data/
+
+# GCP
+service-account*.json
+credentials*.json
+
+# OS
+.DS_Store
