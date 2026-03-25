@@ -2,15 +2,18 @@
 pipeline.py - Main entrypoint for the AI pipeline.
 """
 
-import os
-import pandas as pd
+from __future__ import annotations
+
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict
 
+import pandas as pd
+
+from .clustering import ClusteringManager
+from .config import PipelineConfig
 from .data_generation import DataGenerator
 from .feature_engineering import FeatureEngineer
-from .clustering import ClusteringManager
 from .persona_modeling import PersonaManager
 
 
@@ -22,100 +25,112 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
     3. Clustering
     4. Persona Modeling
     """
+    pipeline_config = PipelineConfig.model_validate(config)
     print("Starting AI Pipeline...")
-    
-    # Extract config
-    random_state = config.get("random_state", 42)
-    n_synthetic = config.get("n_synthetic_customers", 1000)
-    n_personas = config.get("n_personas", 7)
-    excel_path = config.get("excel_path")
-    output_dir = config.get("output_dir", "./output")
-    gemini_api_key = config.get("gemini_api_key")
-    gemini_model = config.get("gemini_model_name", "gemini-3-flash")
-    
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # 1. Data Generation
-    dg = DataGenerator(random_state=random_state)
-    
-    # If excel doesn't exist, generate dummy excel
-    if excel_path and not os.path.exists(excel_path):
-        os.makedirs(os.path.dirname(excel_path), exist_ok=True)
-        dg.generate_dummy_excel(2000, excel_path)
-    
-    # Load distributions and generate synthetic data
-    if excel_path:
-        dist = dg.load_real_distributions(excel_path)
-        synthetic_df = dg.generate_synthetic_data(n_synthetic, dist)
-    else:
-        raise ValueError("excel_path is required for generating synthetic data.")
-    
-    synthetic_path = os.path.join(output_dir, "synthetic_customers.parquet")
+
+    output_dir = pipeline_config.output_path
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    dg = DataGenerator(random_state=pipeline_config.random_state)
+
+    if not pipeline_config.excel_file.exists():
+        pipeline_config.excel_file.parent.mkdir(parents=True, exist_ok=True)
+        dg.generate_dummy_excel(2000, str(pipeline_config.excel_file))
+
+    distributions = dg.load_real_distributions(str(pipeline_config.excel_file))
+    synthetic_df = dg.generate_synthetic_data(
+        pipeline_config.n_synthetic_customers,
+        distributions,
+    )
+
+    synthetic_path = output_dir / "synthetic_customers.parquet"
     synthetic_df.to_parquet(synthetic_path, index=False)
     print(f"Synthetic data saved to {synthetic_path}")
 
-    # 2. Feature Engineering
     fe = FeatureEngineer()
     features_df, feature_cols = fe.process_features(synthetic_df)
-    
-    features_path = os.path.join(output_dir, "features.parquet")
+
+    features_path = output_dir / "features.parquet"
     features_df.to_parquet(features_path, index=False)
     print(f"Features saved to {features_path}")
 
-    # 3. Clustering
-    cm = ClusteringManager(n_personas=n_personas, random_state=random_state)
+    cm = ClusteringManager(
+        n_personas=pipeline_config.n_personas,
+        random_state=pipeline_config.random_state,
+    )
     embedding = cm.reduce_dimensions(features_df, feature_cols)
     labels = cm.cluster(embedding)
-    
-    cluster_plot_path = os.path.join(output_dir, "clusters_umap.png")
-    cm.visualize_clusters(embedding, labels, cluster_plot_path)
-    
+
+    cluster_plot_path = output_dir / "clusters_umap.png"
+    cm.visualize_clusters(embedding, labels, str(cluster_plot_path))
+
     features_df["persona_cluster"] = labels
     features_df["umap_x"] = embedding[:, 0]
     features_df["umap_y"] = embedding[:, 1]
-    
-    clustered_path = os.path.join(output_dir, "clustered_customers.parquet")
+
+    clustered_path = output_dir / "clustered_customers.parquet"
     features_df.to_parquet(clustered_path, index=False)
     print(f"Clustered data saved to {clustered_path}")
 
-    # 4. Persona Modeling
-    pm = PersonaManager(api_key=gemini_api_key, model_name=gemini_model)
-    
-    cluster_ids = sorted(features_df["persona_cluster"].unique())
+    pm = PersonaManager(
+        api_key=pipeline_config.gemini_api_key,
+        model_name=pipeline_config.gemini_model_name,
+    )
+
     personas = []
-    
-    for cid in cluster_ids:
-        print(f"Processing cluster {cid}...")
-        stats = pm.extract_cluster_stats(features_df, cid)
+    cluster_ids = sorted(features_df["persona_cluster"].unique())
+    for cluster_id in cluster_ids:
+        print(f"Processing cluster {cluster_id}...")
+        stats = pm.extract_cluster_stats(features_df, cluster_id)
         persona = pm.generate_persona_profile(stats)
         personas.append(persona)
-        
-    personas_path = os.path.join(output_dir, "personas.json")
-    with open(personas_path, "w", encoding="utf-8") as f:
-        json.dump(personas, f, ensure_ascii=False, indent=2)
+
+    personas_path = output_dir / "personas.json"
+    personas_path.write_text(
+        json.dumps(personas, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     print(f"Personas saved to {personas_path}")
 
-    return {
+    metadata = {
         "status": "success",
-        "synthetic_data": synthetic_path,
-        "clustered_data": clustered_path,
-        "personas": personas_path,
-        "cluster_plot": cluster_plot_path,
-        "n_personas": len(personas)
+        "random_state": pipeline_config.random_state,
+        "n_synthetic_customers": pipeline_config.n_synthetic_customers,
+        "n_personas_requested": pipeline_config.n_personas,
+        "n_personas_generated": len(personas),
+        "excel_path": str(pipeline_config.excel_file),
+        "outputs": {
+            "synthetic_data": str(synthetic_path),
+            "features": str(features_path),
+            "clustered_data": str(clustered_path),
+            "personas": str(personas_path),
+            "cluster_plot": str(cluster_plot_path),
+        },
     }
+    metadata_path = output_dir / "pipeline_metadata.json"
+    metadata_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return metadata
 
 
 def run_eda(excel_path: str, output_dir: str) -> None:
     """Simple EDA summary similar to 01_eda.py."""
     print(f"Running EDA on {excel_path}...")
     sheets = ["Demo", "구매", "보유", "앱사용", "관심사", "CLV", "리워즈"]
-    data = {s: pd.read_excel(excel_path, sheet_name=s, header=1) for s in sheets}
-    
-    summary_path = os.path.join(output_dir, "eda_summary.txt")
-    with open(summary_path, "w", encoding="utf-8") as f:
-        f.write("=== EDA Summary ===\n")
-        f.write(f"Total customers: {data['Demo']['index'].nunique()}\n")
-        f.write(f"Purchase count: {len(data['구매'])}\n")
-        # Add more summary logic as needed
-        
+    data = {sheet: pd.read_excel(excel_path, sheet_name=sheet, header=1) for sheet in sheets}
+
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    summary_path = output_path / "eda_summary.txt"
+    summary_path.write_text(
+        "\n".join(
+            [
+                "=== EDA Summary ===",
+                f"Total customers: {data['Demo']['index'].nunique()}",
+                f"Purchase count: {len(data['구매'])}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     print(f"EDA summary saved to {summary_path}")

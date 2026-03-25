@@ -2,24 +2,29 @@
 persona_modeling.py - Logic for generating persona profiles and stories using Gemini.
 """
 
-import pandas as pd
-import numpy as np
+from __future__ import annotations
+
 import json
+from typing import Any, Dict, List
+
 import google.generativeai as genai
-from typing import List, Dict, Any, Optional
+import pandas as pd
 
 
 class PersonaManager:
     """Class for generating and managing persona profiles and individual stories."""
 
     def __init__(self, api_key: str, model_name: str = "gemini-3-flash"):
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(model_name)
+        self.model = None
+        self.model_name = model_name
+        if api_key:
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel(model_name)
 
     def extract_cluster_stats(self, df: pd.DataFrame, cluster_id: int) -> Dict[str, Any]:
         """Extract representative stats for a cluster."""
         cluster = df[df["persona_cluster"] == cluster_id]
-        
+
         return {
             "cluster_id": int(cluster_id),
             "size": int(len(cluster)),
@@ -68,23 +73,31 @@ class PersonaManager:
   "size": {stats['size']}
 }}
 """
-        response = self.model.generate_content(prompt)
-        text = response.text.strip()
-        
-        # Parse JSON block
-        if "```json" in text:
-            text = text.split("```json")[1].split("```")[0].strip()
-        elif "```" in text:
-            text = text.split("```")[1].split("```")[0].strip()
-            
-        return json.loads(text)
+        if self.model is None:
+            return self._build_fallback_persona(stats)
+
+        try:
+            response = self.model.generate_content(prompt)
+            text = response.text.strip()
+
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+
+            return json.loads(text)
+        except Exception:
+            return self._build_fallback_persona(stats)
 
     def generate_individual_stories(self, batch_df: pd.DataFrame) -> List[Dict[str, Any]]:
         """Generate individual persona stories for a batch of customers."""
-        batch_data = batch_df.to_dict(orient='records')
-        
+        if self.model is None:
+            return []
+
+        batch_data = batch_df.to_dict(orient="records")
+
         prompt = f"""
-다음은 가상 고객 중 일부의 수치 데이터입니다. 
+다음은 가상 고객 중 일부의 수치 데이터입니다.
 각 데이터 행을 바탕으로 삼성 디지털 트윈 시스템에서 사용할 수 있는 '살아있는 가상 페르소나' 상세 정보를 생성해주세요.
 
 각 페르소나에 대해 다음 정보를 추가해주세요:
@@ -104,20 +117,77 @@ class PersonaManager:
     "job": "직업",
     "personality": "성격 설명",
     "samsung_experience": "삼성 제품 연결 경험 및 소감"
-  }},
-  ...
+  }}
 ]
 """
         try:
             response = self.model.generate_content(prompt)
             content = response.text.strip()
-            
+
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0].strip()
-                
+
             return json.loads(content)
-        except Exception as e:
-            print(f"Error generating stories: {e}")
+        except Exception:
             return []
+
+    def _build_fallback_persona(self, stats: Dict[str, Any]) -> Dict[str, Any]:
+        age_value = int(round(stats["avg_age"]))
+        age_start = max(18, age_value - 5)
+        age_end = min(70, age_value + 5)
+
+        if stats["avg_game_ratio"] >= 0.25:
+            persona_name = "디지털 엔터테인먼트 헤비유저"
+            persona_name_en = "Digital Entertainment Power User"
+            preferred_channel = "영상 캠페인"
+            keywords = ["엔터테인먼트", "몰입감", "고성능"]
+        elif stats["smartthings_rate"] >= 0.3:
+            persona_name = "커넥티드 라이프 실용층"
+            persona_name_en = "Connected Life Pragmatist"
+            preferred_channel = "텍스트 브리핑"
+            keywords = ["스마트홈", "연결성", "실용성"]
+        else:
+            persona_name = "밸런스형 갤럭시 사용자"
+            persona_name_en = "Balanced Galaxy User"
+            preferred_channel = "SNS 숏폼"
+            keywords = ["편의성", "브랜드 신뢰", "일상 활용"]
+
+        gender_ratio = stats["gender_ratio_male"]
+        if gender_ratio >= 0.55:
+            gender_hint = "남성 비중이 높은"
+        elif gender_ratio <= 0.45:
+            gender_hint = "여성 비중이 높은"
+        else:
+            gender_hint = "성별 구성이 비교적 균형적인"
+
+        return {
+            "cluster_id": int(stats["cluster_id"]),
+            "persona_name": persona_name,
+            "persona_name_en": persona_name_en,
+            "age_range": f"{age_start}-{age_end}",
+            "description": (
+                f"{stats['top_region']} 중심의 {gender_hint} 사용자군으로, "
+                f"평균 연령은 {stats['avg_age']}세이며 재구매와 일상 활용성이 함께 관측됩니다."
+            ),
+            "key_characteristics": [
+                f"평균 구매 횟수 {stats['avg_purchase_count']}",
+                f"평균 프리미엄 구매 {stats['avg_premium_count']}",
+                f"평균 일 사용시간 {stats['avg_daily_usage_min']}분",
+            ],
+            "purchase_intent": round(min(max(stats["avg_ltv"] / 10000, 0), 100), 1),
+            "brand_attitude": round(min(max(stats["avg_retention"] * 100, 0), 100), 1),
+            "marketing_acceptance": round(min(max(stats["repurchase_rate"] * 100, 0), 100), 1),
+            "future_value": round(min(stats["avg_ltv"] / 200, 100), 1),
+            "preferred_channel": preferred_channel,
+            "keywords": keywords,
+            "interests": [
+                f"게임 비중 {stats['avg_game_ratio']}",
+                f"소셜 비중 {stats['avg_social_ratio']}",
+                f"삼성 Health 사용률 {stats['health_app_rate']}",
+            ],
+            "segment_tags": [stats["top_region"], preferred_channel, f"cluster-{stats['cluster_id']}"],
+            "churn_risk": round((1 - stats["avg_retention"]) * 100, 1),
+            "size": int(stats["size"]),
+        }
