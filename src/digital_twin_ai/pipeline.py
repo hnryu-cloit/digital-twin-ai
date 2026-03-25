@@ -83,6 +83,12 @@ def run_pipeline(config: Dict[str, Any]) -> Dict[str, Any]:
         print(f"Processing cluster {cluster_id}...")
         stats = pm.extract_cluster_stats(features_df, cluster_id)
         persona = pm.generate_persona_profile(stats)
+        
+        # 클러스터 내 샘플을 추출하여 개별 페르소나 스토리 생성 추가
+        cluster_df = features_df[features_df["persona_cluster"] == cluster_id]
+        sample_df = cluster_df.sample(min(3, len(cluster_df)), random_state=pipeline_config.random_state)
+        persona["individual_stories"] = pm.generate_individual_stories(sample_df)
+        
         personas.append(persona)
 
     personas_path = output_dir / "personas.json"

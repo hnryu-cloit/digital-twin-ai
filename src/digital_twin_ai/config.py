@@ -14,7 +14,7 @@ class PipelineConfig(BaseModel):
     excel_path: str
     output_dir: str = "./output"
     gemini_api_key: str = ""
-    gemini_model_name: str = "gemini-3-flash"
+    gemini_model_name: str = "gemini-3.0-flash"
 
     @field_validator("excel_path", "output_dir")
     @classmethod

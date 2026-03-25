@@ -7,7 +7,7 @@ GCP_PROJECT_ID  = os.getenv("GCP_PROJECT_ID")
 GCP_BUCKET_NAME = os.getenv("GCP_BUCKET_NAME")
 GCP_REGION      = os.getenv("GCP_REGION", "asia-northeast3")
 GEMINI_API_KEY  = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash")
+GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL_NAME", "gemini-3.0-flash")
 
 # Backend API — AI 파이프라인이 여기서 데이터를 가져온다
 BACKEND_API_URL      = os.getenv("BACKEND_API_URL", "http://localhost:8000")

@@ -11,7 +11,7 @@ def main() -> None:
         "excel_path": os.getenv("EXCEL_PATH", "./data/Digital Customer Twin.xlsx"),
         "output_dir": os.getenv("OUTPUT_DIR", "./output"),
         "gemini_api_key": os.getenv("GEMINI_API_KEY", ""),
-        "gemini_model_name": os.getenv("GEMINI_MODEL_NAME", "gemini-3-flash"),
+        "gemini_model_name": os.getenv("GEMINI_MODEL_NAME", "gemini-3.0-flash"),
     }
     result = run_pipeline(config)
     print(result)

@@ -49,7 +49,7 @@ config = {
     "excel_path": "./data/Digital Customer Twin.xlsx",
     "output_dir": "./output",
     "gemini_api_key": "YOUR_API_KEY",
-    "gemini_model_name": "gemini-3-flash"
+    "gemini_model_name": "gemini-3.0-flash"
 }
 
 results = run_pipeline(config)
