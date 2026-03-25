@@ -95,7 +95,8 @@ class PersonaManager:
   "interests": ["관심사1", "관심사2", "관심사3"],
   "segment_tags": ["태그1", "태그2"],
   "churn_risk": {round((1 - _safe_float(stats.get('avg_retention', 0))) * 100, 1)},
-  "size": {stats.get('size', 0)}
+  "size": {stats.get('size', 0)},
+  "individual_stories": []
 }}
 """
         if self.model is None:
