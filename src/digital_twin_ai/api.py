@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import uuid
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 import google.generativeai as genai
 from fastapi import FastAPI, HTTPException, status
@@ -32,7 +35,7 @@ class PersonaGenerateRequest(BaseModel):
     excel_path: str = "./data/Digital Customer Twin.xlsx"
     output_dir: str = "./output"
     gemini_api_key: str = ""
-    gemini_model_name: str = "gemini-3-flash"
+    gemini_model_name: str = "gemini-3.0-flash"
 
 
 class PersonaGenerateResponse(BaseModel):
@@ -56,7 +59,7 @@ class SurveyGenerateRequest(BaseModel):
     template: dict = Field(default_factory=dict)
     segment_context: dict = Field(default_factory=dict)
     gemini_api_key: str = ""
-    gemini_model_name: str = "gemini-3-flash"
+    gemini_model_name: str = "gemini-3.0-flash"
 
 
 class SurveyGenerateResponse(BaseModel):
@@ -78,7 +81,7 @@ class SimulationRunRequest(BaseModel):
     questions: list[dict] = Field(default_factory=list)
     batch_size: int = Field(default=5, ge=1, le=20)
     gemini_api_key: str = ""
-    gemini_model_name: str = "gemini-3-flash"
+    gemini_model_name: str = "gemini-3.0-flash"
 
 
 class ReportGenerateRequest(BaseModel):
@@ -103,7 +106,7 @@ class ReportGenerateRequest(BaseModel):
     segment_response_summary: dict = Field(default_factory=dict)
     persona_response_samples: list[dict] = Field(default_factory=list)
     gemini_api_key: str = ""
-    gemini_model_name: str = "gemini-3-flash"
+    gemini_model_name: str = "gemini-3.0-flash"
 
 
 class ReportGenerateResponse(BaseModel):
@@ -246,6 +249,7 @@ def _generate_survey_questions(request: SurveyGenerateRequest) -> list[dict]:
                                 }
                             )
         except Exception:
+            logger.exception("Gemini API 설문 생성 실패 (project_id=%s)", request.project_id)
             generated = None
     else:
         # API 키 없을 때 기존 PersonaManager 경유
@@ -294,6 +298,7 @@ def _generate_survey_questions(request: SurveyGenerateRequest) -> list[dict]:
                                     }
                                 )
             except Exception:
+                logger.exception("PersonaManager 설문 생성 실패 (project_id=%s)", request.project_id)
                 generated = None
 
     return generated or _build_fallback_questions(request.user_prompt, request.survey_type, request.question_count)
