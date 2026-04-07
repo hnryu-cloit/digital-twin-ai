@@ -247,6 +247,7 @@ def build_report_prompt(
 {_get_report_type_instruction(report_type)}
 
 중요: 세그먼트별 실제 응답 패턴과 페르소나 응답 샘플에 나타난 구체적인 근거(rationale)를 인사이트에 직접 인용하세요.
+evidence의 source_question_id는 위 detailed_distribution의 question_id 중 가장 관련 있는 것을 사용하세요. 관련 질문이 없으면 null로 설정하세요.
 
 ## 출력 형식 (JSON만 출력)
 {{
@@ -257,7 +258,11 @@ def build_report_prompt(
       "title": "섹션 제목",
       "content": "분석 내용 (3~5문장, 구체적 수치와 응답 근거 포함)",
       "evidence": [
-        {{"label": "근거 항목", "value": "수치/내용"}}
+        {{
+          "label": "근거 항목",
+          "value": "수치/내용",
+          "source_question_id": "q-001"
+        }}
       ],
       "action": "실행 가능한 권장사항 1문장"
     }}
